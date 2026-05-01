@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, BrainCircuit, Check, LineChart, Newspaper, Search, Sparkles, TrendingUp, Wrench } from "lucide-react";
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceDot,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const navLinks = ["Home", "Agents", "Dashboard", "Demo"];
 
@@ -44,12 +55,406 @@ const toolLogEntries = [
   { stepIndex: 3, label: "Calling tool: getMarketTrend" },
 ];
 
-const signalsUsed = [
-  { Icon: LineChart, label: "Price Data" },
-  { Icon: TrendingUp, label: "Market Trend" },
-  { Icon: Newspaper, label: "News Sentiment" },
-  { Icon: Activity, label: "Volatility Signals" },
+const assetMatchers = [
+  { asset: "Bitcoin", aliases: ["bitcoin", "btc"] },
+  { asset: "Ethereum", aliases: ["ethereum", "ether", "eth"] },
+  { asset: "Solana", aliases: ["solana", "sol"] },
+  { asset: "Cardano", aliases: ["cardano", "ada"] },
+  { asset: "Ripple", aliases: ["ripple", "xrp"] },
+  { asset: "Dogecoin", aliases: ["dogecoin", "doge"] },
 ];
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const formatAssetTicker = (asset) => {
+  if (asset.includes("Bitcoin")) return "BTC";
+  if (asset.includes("Ethereum")) return "ETH";
+  if (asset.includes("Solana")) return "SOL";
+  if (asset.includes("Cardano")) return "ADA";
+  if (asset.includes("Ripple")) return "XRP";
+  if (asset.includes("Dogecoin")) return "DOGE";
+  return "CRYPTO";
+};
+
+const hashQuery = (value) => {
+  let hash = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+
+  return hash;
+};
+
+const detectAssets = (normalizedQuery) => {
+  const matches = assetMatchers.filter(({ aliases }) => aliases.some((alias) => normalizedQuery.includes(alias)));
+
+  if (matches.length >= 2) {
+    return {
+      primaryAsset: matches[0].asset,
+      asset: matches.map(({ asset }) => asset).join(" vs "),
+      isComparison: true,
+    };
+  }
+
+  if (matches.length === 1) {
+    return {
+      primaryAsset: matches[0].asset,
+      asset: matches[0].asset,
+      isComparison: false,
+    };
+  }
+
+  return {
+    primaryAsset: "Crypto Market",
+    asset: "Crypto Market",
+    isComparison: false,
+  };
+};
+
+const detectIntent = (normalizedQuery, isComparison) => {
+  if (isComparison || /\b(compare|versus|vs|better than|outperform)\b/.test(normalizedQuery)) {
+    return "comparison";
+  }
+
+  if (/\b(should i|invest|buy|sell|hold|entry|position|portfolio)\b/.test(normalizedQuery)) {
+    return "investment";
+  }
+
+  if (/\b(risk|risky|safe|volatility|downside|crash)\b/.test(normalizedQuery)) {
+    return "risk";
+  }
+
+  return "outlook";
+};
+
+const pickTrend = (score) => {
+  if (score >= 66) return "bullish";
+  if (score <= 36) return "bearish";
+  return "neutral";
+};
+
+const pickSentiment = (score) => {
+  if (score >= 64) return "positive";
+  if (score <= 34) return "negative";
+  return "mixed";
+};
+
+const pickVolatility = (score) => {
+  if (score >= 70) return "high";
+  if (score <= 34) return "low";
+  return "medium";
+};
+
+const scoreSignalAgreement = (trend, sentiment) => {
+  if ((trend === "bullish" && sentiment === "positive") || (trend === "bearish" && sentiment === "negative")) {
+    return "aligned";
+  }
+
+  if (trend === "neutral" || sentiment === "mixed") {
+    return "mixed";
+  }
+
+  return "conflicted";
+};
+
+const getRiskLevel = (trend, sentiment, volatility) => {
+  if (volatility === "high" || scoreSignalAgreement(trend, sentiment) === "conflicted") {
+    return "high";
+  }
+
+  if (volatility === "low" && scoreSignalAgreement(trend, sentiment) === "aligned") {
+    return "low";
+  }
+
+  return "medium";
+};
+
+const getRecommendation = ({ asset, intent, trend, sentiment, volatility, risk, agreement }) => {
+  const assetLabel = asset === "Crypto Market" ? "the broader crypto market" : asset;
+
+  if (intent === "comparison") {
+    if (trend === "bullish" && sentiment === "positive") {
+      return `${assetLabel} shows constructive relative strength in this simulation. Favor the stronger momentum leg, but size gradually because volatility is ${volatility}.`;
+    }
+
+    if (trend === "bearish" || sentiment === "negative") {
+      return `${assetLabel} looks uneven on the comparative read. Wait for cleaner confirmation before rotating capital aggressively.`;
+    }
+
+    return `${assetLabel} is too balanced for a decisive rotation call. Keep the comparison on watch and wait for trend or sentiment to break first.`;
+  }
+
+  if (intent === "investment") {
+    if (trend === "bullish" && sentiment === "positive" && risk !== "high") {
+      return `${assetLabel} has a constructive setup, so a staged entry can be reasonable while keeping stops and position size disciplined.`;
+    }
+
+    if (risk === "high" || agreement === "conflicted") {
+      return `${assetLabel} does not offer clean enough confirmation for an aggressive entry. Treat this as a watchlist candidate until signals align.`;
+    }
+
+    return `${assetLabel} supports a cautious hold-or-small-entry stance. The setup is workable, but conviction is limited by mixed signals.`;
+  }
+
+  if (intent === "risk") {
+    if (risk === "high") {
+      return `${assetLabel} carries elevated downside risk because volatility and agent signals are not fully aligned. Reduce exposure or wait for confirmation.`;
+    }
+
+    if (risk === "low") {
+      return `${assetLabel} currently screens as lower risk, with stable volatility and aligned signals supporting measured exposure.`;
+    }
+
+    return `${assetLabel} shows manageable but not negligible risk. Use tighter sizing until volatility or sentiment improves.`;
+  }
+
+  if (trend === "bullish" && sentiment === "positive") {
+    return `${assetLabel} has a bullish outlook with supportive sentiment. Momentum can continue if volatility stays contained.`;
+  }
+
+  if (trend === "bearish" && sentiment === "negative") {
+    return `${assetLabel} has a defensive outlook. The simulated signal stack favors patience over fresh risk.`;
+  }
+
+  return `${assetLabel} has a cautious outlook. Trend, sentiment, and volatility are not decisive enough for a high-conviction call.`;
+};
+
+const generateAnalysis = (rawQuery) => {
+  const normalizedQuery = rawQuery.toLowerCase();
+  const seed = hashQuery(normalizedQuery);
+  const detected = detectAssets(normalizedQuery);
+  const intent = detectIntent(normalizedQuery, detected.isComparison);
+
+  const mentionsBearish = /\b(bearish|down|drop|crash|sell|weak|risk|unsafe)\b/.test(normalizedQuery);
+  const mentionsBullish = /\b(bullish|up|pump|growth|buy|strong|rally)\b/.test(normalizedQuery);
+  const asksInvestment = intent === "investment";
+
+  const assetBias = detected.primaryAsset === "Bitcoin" ? 6 : detected.primaryAsset === "Ethereum" ? 3 : 0;
+  const trendScore = clamp((seed % 100) + assetBias + (mentionsBullish ? 16 : 0) - (mentionsBearish ? 18 : 0), 0, 99);
+  const sentimentScore = clamp(((seed >>> 7) % 100) + (mentionsBullish ? 12 : 0) - (mentionsBearish ? 12 : 0), 0, 99);
+  const volatilityScore = clamp(((seed >>> 13) % 100) + (asksInvestment ? 5 : 0) + (mentionsBearish ? 10 : 0), 0, 99);
+
+  const trend = pickTrend(trendScore);
+  const sentiment = pickSentiment(sentimentScore);
+  const volatility = pickVolatility(volatilityScore);
+  const agreement = scoreSignalAgreement(trend, sentiment);
+  const risk = getRiskLevel(trend, sentiment, volatility);
+
+  const trendWeight = trend === "neutral" ? 2 : Math.round(Math.abs(trendScore - 50) / 5);
+  const sentimentWeight = sentiment === "mixed" ? 1 : Math.round(Math.abs(sentimentScore - 50) / 6);
+  const agreementBonus = agreement === "aligned" ? 5 : agreement === "mixed" ? 0 : -5;
+  const volatilityPenalty = volatility === "high" ? 5 : volatility === "low" ? -2 : 0;
+  const confidence = clamp(60 + trendWeight + sentimentWeight + agreementBonus - volatilityPenalty, 60, 90);
+
+  const recommendation = getRecommendation({
+    asset: detected.asset,
+    intent,
+    trend,
+    sentiment,
+    volatility,
+    risk,
+    agreement,
+  });
+
+  return {
+    asset: detected.asset,
+    trend,
+    risk,
+    sentiment,
+    recommendation,
+    confidence,
+    intent,
+    volatility,
+    agreement,
+  };
+};
+
+const generateTrendData = ({ asset, trend, volatility, confidence }) => {
+  const pointCount = 26;
+  const seed = hashQuery(`${asset}-${trend}-${volatility}-${confidence}`);
+  const volatilityMap = {
+    low: { noise: 0.8, wave: 0.55 },
+    medium: { noise: 1.7, wave: 1.1 },
+    high: { noise: 3.2, wave: 2.25 },
+  };
+  const trendSlope = {
+    bullish: 1.28,
+    bearish: -1.12,
+    neutral: 0.08,
+  };
+  const profile = volatilityMap[volatility] ?? volatilityMap.medium;
+  const startingValue = 100 + (seed % 24);
+  const ticker = formatAssetTicker(asset);
+  let previousValue = startingValue;
+
+  return Array.from({ length: pointCount }, (_, index) => {
+    const randomish = (((seed >>> (index % 16)) + index * 17) % 100) / 100 - 0.5;
+    const wave = Math.sin(index * 0.72 + (seed % 9)) * profile.wave;
+    const drift = trendSlope[trend] * index;
+    const pull = trend === "neutral" ? (startingValue - previousValue) * 0.18 : 0;
+    const value = clamp(startingValue + drift + wave + randomish * profile.noise + pull, 62, 158);
+    previousValue = value;
+
+    return {
+      timestamp: `${String(9 + Math.floor(index / 2)).padStart(2, "0")}:${index % 2 === 0 ? "00" : "30"}`,
+      price: Number(value.toFixed(2)),
+      movingAverage: null,
+      asset: ticker,
+    };
+  }).map((point, index, points) => {
+    const sliceStart = Math.max(0, index - 4);
+    const window = points.slice(sliceStart, index + 1);
+    const average = window.reduce((sum, item) => sum + item.price, 0) / window.length;
+
+    return {
+      ...point,
+      movingAverage: Number(average.toFixed(2)),
+    };
+  });
+};
+
+const chartThemeByTrend = {
+  bullish: {
+    line: "#2DD4BF",
+    area: "#14B8A6",
+    ma: "#A7F3D0",
+    glow: "rgba(45, 212, 191, 0.28)",
+    marker: "#5EEAD4",
+    badge: "text-emerald-200 border-emerald-300/18 bg-emerald-400/10",
+  },
+  bearish: {
+    line: "#FB7185",
+    area: "#F43F5E",
+    ma: "#FDA4AF",
+    glow: "rgba(244, 63, 94, 0.28)",
+    marker: "#FDA4AF",
+    badge: "text-rose-200 border-rose-300/18 bg-rose-400/10",
+  },
+  neutral: {
+    line: "#8B5CF6",
+    area: "#3B82F6",
+    ma: "#C4B5FD",
+    glow: "rgba(139, 92, 246, 0.26)",
+    marker: "#BFDBFE",
+    badge: "text-blue-200 border-blue-300/18 bg-blue-400/10",
+  },
+};
+
+function MarketTrendTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const pricePoint = payload.find((item) => item.dataKey === "price");
+  const maPoint = payload.find((item) => item.dataKey === "movingAverage");
+
+  return (
+    <div className="market-tooltip">
+      <div className="market-tooltip-time">{label}</div>
+      <div className="market-tooltip-row">
+        <span>Price</span>
+        <strong>{pricePoint?.value?.toFixed?.(2) ?? pricePoint?.value}</strong>
+      </div>
+      <div className="market-tooltip-row market-tooltip-muted">
+        <span>Moving avg</span>
+        <strong>{maPoint?.value?.toFixed?.(2) ?? maPoint?.value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function MarketTrendChart({ analysis }) {
+  const data = useMemo(() => generateTrendData(analysis), [analysis]);
+  const theme = chartThemeByTrend[analysis.trend] ?? chartThemeByTrend.neutral;
+  const lastPoint = data[data.length - 1];
+  const firstPoint = data[0];
+  const change = lastPoint.price - firstPoint.price;
+  const changePercent = (change / firstPoint.price) * 100;
+
+  return (
+    <div className="market-chart-shell mt-5">
+      <div className="market-chart-card" style={{ "--chart-glow": theme.glow }}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="market-chart-title">Market Trend Analysis</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={`market-chart-badge ${theme.badge}`}>{formatAssetTicker(analysis.asset)}</span>
+              <span className="text-xs text-white/42">Simulated based on current signals</span>
+            </div>
+          </div>
+          <div className="text-left sm:text-right">
+            <div className="text-2xl font-semibold text-white">{lastPoint.price.toFixed(2)}</div>
+            <div className={`mt-1 text-sm ${change >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+              {change >= 0 ? "+" : ""}
+              {changePercent.toFixed(2)}%
+            </div>
+          </div>
+        </div>
+
+        <div className="market-chart-canvas mt-5">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="trendLineGradient" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor={theme.line} stopOpacity={0.6} />
+                  <stop offset="55%" stopColor={theme.line} stopOpacity={1} />
+                  <stop offset="100%" stopColor={theme.marker} stopOpacity={0.95} />
+                </linearGradient>
+                <linearGradient id="trendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={theme.area} stopOpacity={0.28} />
+                  <stop offset="78%" stopColor={theme.area} stopOpacity={0.03} />
+                  <stop offset="100%" stopColor={theme.area} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="rgba(255,255,255,0.055)" vertical={false} />
+              <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: "rgba(226,232,240,0.38)", fontSize: 11 }} />
+              <YAxis hide domain={["dataMin - 6", "dataMax + 6"]} />
+              <Tooltip content={<MarketTrendTooltip />} cursor={{ stroke: "rgba(255,255,255,0.12)", strokeWidth: 1 }} />
+              <Area
+                type="monotone"
+                dataKey="price"
+                stroke="none"
+                fill="url(#trendAreaGradient)"
+                isAnimationActive
+                animationDuration={900}
+              />
+              <Line
+                type="monotone"
+                dataKey="movingAverage"
+                stroke={theme.ma}
+                strokeWidth={1.35}
+                dot={false}
+                opacity={0.62}
+                isAnimationActive
+                animationDuration={900}
+              />
+              <Line
+                type="monotone"
+                dataKey="price"
+                stroke="url(#trendLineGradient)"
+                strokeWidth={3}
+                dot={false}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: "#0B0F19", fill: theme.marker }}
+                isAnimationActive
+                animationDuration={1100}
+              />
+              <ReferenceDot
+                x={lastPoint.timestamp}
+                y={lastPoint.price}
+                r={5}
+                fill={theme.marker}
+                stroke="#0B0F19"
+                strokeWidth={2}
+                ifOverflow="extendDomain"
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const features = [
   {
@@ -80,6 +485,7 @@ function GlassCard({ className = "", children }) {
 
 export default function App() {
   const [query, setQuery] = useState("What is the current outlook for Bitcoin and Ethereum?");
+  const [analysisResult, setAnalysisResult] = useState(() => generateAnalysis("What is the current outlook for Bitcoin and Ethereum?"));
   const [workflowVisible, setWorkflowVisible] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [workflowFinished, setWorkflowFinished] = useState(false);
@@ -88,18 +494,35 @@ export default function App() {
   const [isTypingRecommendation, setIsTypingRecommendation] = useState(false);
   const [animatedConfidence, setAnimatedConfidence] = useState(0);
   const [queryHistory, setQueryHistory] = useState([]);
+  const [showTechnicalOutput, setShowTechnicalOutput] = useState(false);
   const timerRef = useRef([]);
   const typeTimerRef = useRef(null);
 
   const recommendationText = useMemo(() => {
     if (workflowFinished) {
-      return "Momentum remains constructive with improving breadth. Watch for continuation above local resistance while keeping risk medium.";
+      return analysisResult.recommendation;
     }
 
     return "Recommendation is assembling as the agents validate live pricing, market trend, and sentiment signals.";
-  }, [workflowFinished]);
+  }, [analysisResult.recommendation, workflowFinished]);
 
-  const recommendationConfidence = 0.78;
+  const recommendationConfidence = analysisResult.confidence;
+
+  const structuredOutput = {
+    asset: analysisResult.asset,
+    trend: analysisResult.trend,
+    risk: analysisResult.risk,
+    sentiment: analysisResult.sentiment,
+    recommendation: analysisResult.recommendation,
+    confidence: analysisResult.confidence,
+  };
+
+  const dynamicSignals = [
+    { Icon: LineChart, label: "Asset", value: analysisResult.asset },
+    { Icon: TrendingUp, label: "Trend", value: analysisResult.trend },
+    { Icon: Newspaper, label: "Sentiment", value: analysisResult.sentiment },
+    { Icon: Activity, label: "Volatility", value: analysisResult.volatility },
+  ];
 
   useEffect(() => {
     return () => {
@@ -143,7 +566,7 @@ export default function App() {
 
     setAnimatedConfidence(0);
     const confidenceTimer = window.setTimeout(() => {
-      setAnimatedConfidence(Math.round(recommendationConfidence * 100));
+      setAnimatedConfidence(recommendationConfidence);
     }, 360);
     timerRef.current.push(confidenceTimer);
 
@@ -166,6 +589,7 @@ export default function App() {
     }
 
     setQuery(normalizedQuery);
+    setAnalysisResult(generateAnalysis(normalizedQuery));
     setQueryHistory((current) => {
       const deduped = [normalizedQuery, ...current.filter((item) => item !== normalizedQuery)];
       return deduped.slice(0, 3);
@@ -179,6 +603,7 @@ export default function App() {
     setTypedRecommendation("");
     setIsTypingRecommendation(false);
     setAnimatedConfidence(0);
+    setShowTechnicalOutput(false);
 
     liveAgentSteps.forEach((_, index) => {
       if (index === 0) {
@@ -432,7 +857,7 @@ export default function App() {
                                   </span>
                                 </div>
                               </div>
-                              <div className="recommendation-chip">{Math.round(recommendationConfidence * 100)}%</div>
+                              <div className="recommendation-chip">{recommendationConfidence}%</div>
                             </div>
 
                             {workflowFinished ? (
@@ -450,22 +875,48 @@ export default function App() {
                               </div>
                             ) : null}
 
+                            {workflowFinished ? <MarketTrendChart analysis={analysisResult} /> : null}
+
                             <div className="mt-5">
                               <div className="text-xs font-medium uppercase tracking-[0.18em] text-white/38">
-                                Signals Used
+                                Simulated Signals
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
-                                {signalsUsed.map((signal) => (
+                                {dynamicSignals.map((signal) => (
                                   <span key={signal.label} className="signal-pill">
                                     <signal.Icon size={14} strokeWidth={2} />
-                                    <span>{signal.label}</span>
+                                    <span>{signal.label}: {signal.value}</span>
                                   </span>
                                 ))}
                               </div>
                               <div className="mt-3 text-xs leading-6 text-white/40">
-                                Transparency note: these signals inform the agent’s final framing and confidence.
+                                Intent: {analysisResult.intent}. Agent agreement: {analysisResult.agreement}.
                               </div>
                             </div>
+
+                            {workflowFinished ? (
+                              <div className="technical-output mt-5">
+                                <button
+                                  type="button"
+                                  className="technical-output-toggle"
+                                  aria-expanded={showTechnicalOutput}
+                                  aria-controls="structured-output-panel"
+                                  onClick={() => setShowTechnicalOutput((current) => !current)}
+                                >
+                                  {showTechnicalOutput ? "Hide Technical Output" : "Show Technical Output"}
+                                </button>
+
+                                <div
+                                  id="structured-output-panel"
+                                  className={`technical-output-panel ${showTechnicalOutput ? "technical-output-panel-open" : ""}`}
+                                  aria-hidden={!showTechnicalOutput}
+                                >
+                                  <div className="structured-output" aria-label="Structured analysis output">
+                                    <pre>{JSON.stringify(structuredOutput, null, 2)}</pre>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>

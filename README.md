@@ -8,10 +8,6 @@ CoinSage AI is an agent-style crypto research interface that simulates how multi
 
 ## Screenshots
 
-### Home and Query Experience
-
-![CoinSage AI home screen](docs/screenshots/coinsage-home.png)
-
 ### Dynamic Recommendation and Market Chart
 
 ![CoinSage AI analysis result](docs/screenshots/coinsage-analysis.png)

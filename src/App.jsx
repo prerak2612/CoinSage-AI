@@ -346,6 +346,50 @@ const chartThemeByTrend = {
   },
 };
 
+const getAgreementMetric = (agreement) => {
+  if (agreement === "aligned") {
+    return { label: "High", score: 88, tone: "high" };
+  }
+
+  if (agreement === "mixed") {
+    return { label: "Medium", score: 74, tone: "medium" };
+  }
+
+  return { label: "Low", score: 63, tone: "low" };
+};
+
+const getConsistencyScore = ({ asset, trend, volatility, agreement }) => {
+  const volatilityScore = volatility === "low" ? 18 : volatility === "medium" ? 10 : 2;
+  const agreementScore = agreement === "aligned" ? 18 : agreement === "mixed" ? 10 : 3;
+  const stabilityNoise = hashQuery(`${asset}-${trend}-${volatility}-consistency`) % 7;
+
+  return clamp(58 + volatilityScore + agreementScore + stabilityNoise, 60, 92);
+};
+
+const getF1Score = ({ asset, trend, sentiment, volatility, agreement }) => {
+  const seedAdjustment = (hashQuery(`${asset}-${trend}-${sentiment}-f1`) % 5) / 100;
+
+  if (agreement === "aligned" && volatility === "low") {
+    return Number(clamp(0.85 + seedAdjustment, 0.85, 0.9).toFixed(2));
+  }
+
+  if (agreement === "aligned") {
+    return Number(clamp(0.8 + seedAdjustment, 0.8, 0.87).toFixed(2));
+  }
+
+  if (agreement === "mixed") {
+    return Number(clamp(0.7 + seedAdjustment, 0.7, 0.8).toFixed(2));
+  }
+
+  return Number(clamp(0.65 + seedAdjustment, 0.65, 0.7).toFixed(2));
+};
+
+const getMetricTone = (score) => {
+  if (score >= 80) return "high";
+  if (score >= 70) return "medium";
+  return "low";
+};
+
 function MarketTrendTooltip({ active, payload, label }) {
   if (!active || !payload?.length) {
     return null;
@@ -399,7 +443,7 @@ function MarketTrendChart({ analysis }) {
 
         <div className="market-chart-canvas mt-5">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: 0 }}>
+            <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="trendLineGradient" x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0%" stopColor={theme.line} stopOpacity={0.6} />
@@ -412,9 +456,16 @@ function MarketTrendChart({ analysis }) {
                   <stop offset="100%" stopColor={theme.area} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(255,255,255,0.055)" vertical={false} />
-              <XAxis dataKey="timestamp" axisLine={false} tickLine={false} tick={{ fill: "rgba(226,232,240,0.38)", fontSize: 11 }} />
-              <YAxis hide domain={["dataMin - 6", "dataMax + 6"]} />
+              <CartesianGrid stroke="rgba(255,255,255,0.1)" strokeOpacity={0.1} vertical={false} />
+              <XAxis
+                dataKey="timestamp"
+                axisLine={false}
+                tickLine={false}
+                padding={{ left: 0, right: 0 }}
+                interval="preserveStartEnd"
+                tick={{ fill: "rgba(226,232,240,0.38)", fontSize: 11 }}
+              />
+              <YAxis hide domain={["dataMin", "dataMax"]} />
               <Tooltip content={<MarketTrendTooltip />} cursor={{ stroke: "rgba(255,255,255,0.12)", strokeWidth: 1 }} />
               <Area
                 type="monotone"
@@ -458,6 +509,62 @@ function MarketTrendChart({ analysis }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AIEvaluationMetrics({ analysis }) {
+  const agreementMetric = getAgreementMetric(analysis.agreement);
+  const consistencyScore = getConsistencyScore(analysis);
+  const f1Score = getF1Score(analysis);
+  const metrics = [
+    {
+      label: "AI Confidence Score",
+      value: `${analysis.confidence}/100`,
+      score: analysis.confidence,
+      tone: getMetricTone(analysis.confidence),
+    },
+    {
+      label: "Signal Agreement",
+      value: agreementMetric.label,
+      score: agreementMetric.score,
+      tone: agreementMetric.tone,
+    },
+    {
+      label: "Consistency Score",
+      value: `${consistencyScore}%`,
+      score: consistencyScore,
+      tone: getMetricTone(consistencyScore),
+    },
+    {
+      label: "F1 Signal Score",
+      value: `${Math.round(f1Score * 100)}/100`,
+      score: Math.round(f1Score * 100),
+      tone: getMetricTone(Math.round(f1Score * 100)),
+    },
+  ];
+
+  return (
+    <section className="ai-metrics-section" aria-label="AI evaluation metrics">
+      <div className="ai-metrics-header">
+        <div>
+          <div className="ai-metrics-eyebrow">Evaluation Layer</div>
+          <h3>AI Evaluation Metrics</h3>
+        </div>
+        <div className="ai-metrics-note">Simulated reliability checks</div>
+      </div>
+
+      <div className="ai-metrics-grid">
+        {metrics.map((metric) => (
+          <div key={metric.label} className={`ai-metric-card ai-metric-card-${metric.tone}`}>
+            <div className="ai-metric-label">{metric.label}</div>
+            <div className="ai-metric-value">{metric.value}</div>
+            <div className="ai-metric-bar" aria-hidden="true">
+              <div className="ai-metric-bar-fill" style={{ width: `${metric.score}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -664,7 +771,7 @@ export default function App() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#0B0F19] text-white">
+    <main className="relative min-h-screen overflow-x-hidden bg-[#0B0F19] text-white">
       <div className="absolute inset-0 bg-[linear-gradient(180deg,#0B0F19_0%,#080B14_52%,#05070D_100%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(139,92,246,0.22),transparent_26%),radial-gradient(circle_at_82%_18%,rgba(59,130,246,0.18),transparent_24%),radial-gradient(circle_at_68%_62%,rgba(236,72,153,0.12),transparent_24%)]" />
       <div className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:72px_72px]" />
@@ -680,7 +787,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 pb-10 pt-6 sm:px-10 lg:px-12">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl min-w-0 flex-col px-4 pb-10 pt-5 sm:px-8 sm:pt-6 lg:px-12">
         <header className="animate-[fadeUp_800ms_ease-out_both]">
           <GlassCard className="px-5 py-4 sm:px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -713,14 +820,14 @@ export default function App() {
         </header>
 
         <section id="home" className="relative flex flex-1 scroll-mt-8 items-center py-18 lg:py-24">
-          <div className={`grid w-full gap-14 lg:items-center ${workflowVisible ? "lg:grid-cols-1" : "lg:grid-cols-[1.04fr_0.96fr]"}`}>
-            <div className={`${workflowVisible ? "max-w-none" : "max-w-2xl"}`}>
+          <div className={`grid w-full min-w-0 gap-14 lg:items-center ${workflowVisible ? "lg:grid-cols-1" : "lg:grid-cols-[minmax(0,1.04fr)_minmax(0,0.96fr)]"}`}>
+            <div className={`min-w-0 ${workflowVisible ? "max-w-none" : "max-w-2xl"}`}>
               <div className="inline-flex animate-[fadeScale_900ms_ease-out_120ms_both] items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-white/70">
                 <span className="h-2 w-2 rounded-full bg-[linear-gradient(90deg,#8B5CF6,#3B82F6,#EC4899)] shadow-[0_0_20px_rgba(139,92,246,0.85)]" />
                 Real-time reasoning for digital asset research
               </div>
 
-              <h1 className="mt-8 max-w-xl text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl animate-[fadeScale_950ms_ease-out_180ms_both]">
+              <h1 className="mt-8 max-w-xl break-words text-4xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl animate-[fadeScale_950ms_ease-out_180ms_both]">
                 Smarter Crypto Decisions
               </h1>
 
@@ -742,22 +849,22 @@ export default function App() {
                 </button>
               </div>
 
-              <GlassCard id="analysis" className="relative z-10 mt-8 scroll-mt-24 animate-[fadeUp_1050ms_ease-out_540ms_both] p-4 sm:p-5">
+              <GlassCard id="analysis" className="relative z-10 mt-8 min-w-0 scroll-mt-24 animate-[fadeUp_1050ms_ease-out_540ms_both] p-3 sm:p-5">
                 <form
                   onSubmit={handleSubmit}
-                  className="rounded-[18px] border border-white/6 bg-[#0E1424]/84 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                  className="min-w-0 rounded-[18px] border border-white/6 bg-[#0E1424]/84 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row">
                     <input
                       ref={inputRef}
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Ask CoinSage AI about Bitcoin momentum, ETH rotation, or market risk..."
-                      className="h-14 flex-1 rounded-[16px] border border-white/6 bg-white/[0.035] px-4 text-base text-white outline-none transition duration-300 focus:border-violet-400/35 focus:bg-white/[0.05] placeholder:text-white/32"
+                      className="h-14 min-w-0 flex-1 rounded-[16px] border border-white/6 bg-white/[0.035] px-4 text-base text-white outline-none transition duration-300 focus:border-violet-400/35 focus:bg-white/[0.05] placeholder:text-white/32"
                     />
                     <button
                       type="submit"
-                      className="inline-flex h-14 shrink-0 items-center justify-center rounded-[16px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-6 text-base font-medium text-white shadow-[0_0_30px_rgba(99,102,241,0.24)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(236,72,153,0.2)]"
+                      className="inline-flex h-14 w-full shrink-0 items-center justify-center rounded-[16px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-6 text-base font-medium text-white shadow-[0_0_30px_rgba(99,102,241,0.24)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_40px_rgba(236,72,153,0.2)] sm:w-auto"
                     >
                       Run Query
                     </button>
@@ -784,13 +891,13 @@ export default function App() {
                 ) : null}
 
                 {workflowVisible ? (
-                  <div className="mt-5 rounded-[20px] border border-white/6 bg-[#0B1120]/82 p-5 sm:p-6 shadow-[0_16px_50px_rgba(0,0,0,0.28)] animate-[fadeScale_420ms_ease-out_both]">
-                    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[1.2fr_0.8fr]">
-                      <div>
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
+                  <div className="mt-5 min-w-0 rounded-[20px] border border-white/6 bg-[#0B1120]/82 p-4 shadow-[0_16px_50px_rgba(0,0,0,0.28)] animate-[fadeScale_420ms_ease-out_both] sm:p-6">
+                    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(330px,0.95fr)_minmax(0,1.05fr)]">
+                      <div className="min-w-0">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
                             <div className="text-sm text-white/42">Active query</div>
-                            <div className="mt-1 text-base font-medium text-white">{query}</div>
+                            <div className="mt-1 break-words text-base font-medium text-white">{query}</div>
                           </div>
                           <div className="workflow-status">
                             <span className={`workflow-status-dot ${workflowFinished ? "workflow-status-dot-complete" : ""}`} />
@@ -800,7 +907,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="agent-run-list mx-auto mt-6 max-w-[580px] space-y-4">
+                        <div className="agent-run-list mx-auto mt-6 w-full max-w-[620px]">
                           {liveAgentSteps.map((step, index) => {
                             const isCompleted = workflowFinished || index < activeStep;
                             const isActive = !workflowFinished && index === activeStep;
@@ -856,8 +963,8 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="rounded-[18px] border border-white/6 bg-[#0D1322]/86 p-5">
-                        <div className="flex items-center justify-between">
+                      <div className="min-w-0 rounded-[18px] border border-white/6 bg-[#0D1322]/86 p-4 sm:p-5">
+                        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div className="text-sm font-medium text-white">Tool Call Logs</div>
                           <div className="flex items-center gap-2 text-xs text-white/36">
                             <span className={`h-2 w-2 rounded-full ${workflowFinished ? "bg-emerald-400" : "bg-violet-400 animate-pulse"}`} />
@@ -880,8 +987,8 @@ export default function App() {
 
                         <div className="recommendation-shell mt-5">
                           <div className="recommendation-card">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
                                 <div className="recommendation-title">AI Recommendation</div>
                                 <div
                                   className={`recommendation-text ${workflowFinished ? "recommendation-typed-in" : ""}`}
@@ -917,6 +1024,8 @@ export default function App() {
                             ) : null}
 
                             {workflowFinished ? <MarketTrendChart analysis={analysisResult} /> : null}
+
+                            {workflowFinished ? <AIEvaluationMetrics analysis={analysisResult} /> : null}
 
                             <div className="mt-5">
                               <div className="text-xs font-medium uppercase tracking-[0.18em] text-white/38">
@@ -966,7 +1075,7 @@ export default function App() {
                 ) : null}
               </GlassCard>
 
-              <div className="mt-12 grid max-w-xl gap-4 sm:grid-cols-3 animate-[fadeUp_1050ms_ease-out_540ms_both]">
+              <div className="mt-12 grid max-w-xl min-w-0 gap-4 sm:grid-cols-3 animate-[fadeUp_1050ms_ease-out_540ms_both]">
                 {[
                   ["94%", "Signal clarity"],
                   ["18+", "Linked tools"],
@@ -980,7 +1089,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className={`animate-[fadeScale_1100ms_ease-out_240ms_both] ${workflowVisible ? "hidden" : ""}`}>
+            <div className={`min-w-0 animate-[fadeScale_1100ms_ease-out_240ms_both] ${workflowVisible ? "hidden" : ""}`}>
               <div className="relative mx-auto flex aspect-[1.02] w-full max-w-[580px] items-center justify-center">
                 <div className="absolute inset-[10%] rounded-full border border-white/8 bg-[radial-gradient(circle,rgba(99,102,241,0.22),transparent_58%)] blur-3xl" />
                 <div className="absolute inset-[18%] rounded-full border border-white/8 bg-[radial-gradient(circle,rgba(236,72,153,0.14),transparent_64%)] blur-3xl" />
@@ -1110,7 +1219,7 @@ export default function App() {
         </section>
 
         <section id="dashboard" className="scroll-mt-24 py-8">
-          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="animate-[fadeUp_1000ms_ease-out_260ms_both]">
               <div className="text-sm uppercase tracking-[0.24em] text-white/38">Preview</div>
               <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">A dashboard that turns noise into action</h2>
@@ -1119,8 +1228,8 @@ export default function App() {
               </p>
             </div>
 
-            <GlassCard className="animate-[fadeScale_1050ms_ease-out_320ms_both] overflow-hidden p-6">
-              <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+            <GlassCard className="min-w-0 animate-[fadeScale_1050ms_ease-out_320ms_both] overflow-hidden p-4 sm:p-6">
+              <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                 <div className="rounded-[20px] border border-white/6 bg-[#0D1322]/86 p-5">
                   <div className="flex items-center justify-between">
                     <div>

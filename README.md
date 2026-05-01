@@ -1,6 +1,6 @@
 # CoinSage AI
 
-CoinSage AI is an agent-style crypto research interface that simulates how multiple market-analysis agents can turn a user query into a structured investment view. It is built to make the reasoning process visible: the UI shows workflow execution, tool-call logs, simulated market signals, a recommendation, confidence scoring, and a dynamic market trend chart.
+CoinSage AI is an agent-style crypto research interface that simulates how multiple market-analysis agents can turn a user query into a structured investment view. It is built to make the reasoning process visible: the UI shows workflow execution, tool-call logs, simulated market signals, a recommendation, confidence scoring, AI evaluation metrics, and a dynamic market trend chart.
 
 > This project uses simulated signals and mock market data for product demonstration. It is not financial advice.
 
@@ -25,7 +25,8 @@ When a user asks a crypto-market question, CoinSage AI runs a visible research f
 3. Calculates a confidence score from signal strength and consistency.
 4. Generates a context-aware recommendation.
 5. Renders a dynamic price-trend chart that matches the generated market view.
-6. Optionally exposes the raw structured JSON output for technical users.
+6. Shows a premium evaluation layer with AI Confidence Score, signal agreement, consistency score, and F1 Signal Score.
+7. Optionally exposes the raw structured JSON output for technical users.
 
 The goal is to make the app feel like a real decision-support system rather than a static demo.
 
@@ -35,11 +36,12 @@ The goal is to make the app feel like a real decision-support system rather than
 - Intent detection for outlook, comparison, risk, and investment-decision prompts.
 - Simulated signal layer for trend, sentiment, volatility, and signal agreement.
 - Dynamic confidence scoring in realistic bounds.
+- AI evaluation metrics with confidence and F1-style scores out of 100.
 - Premium Recharts-based market trend chart with area fill, glow styling, moving average, and last-price marker.
 - Typewriter-style recommendation reveal.
 - Live workflow timeline and tool-call terminal.
 - Collapsible technical output with raw structured JSON.
-- Dark glassmorphism UI designed for a crypto research dashboard.
+- Responsive dark glassmorphism UI designed for a premium crypto research dashboard.
 
 ## Architecture Flow
 
@@ -58,7 +60,8 @@ flowchart TD
   I --> K["Recommendation UI"]
   J --> L["Market Trend Analysis chart"]
   H --> M["Confidence meter"]
-  G --> N["Structured JSON output"]
+  G --> N["AI evaluation metrics"]
+  G --> O["Structured JSON output"]
 ```
 
 ## How The System Works
@@ -102,7 +105,18 @@ confidence = base score
 
 Aligned signals raise confidence. Conflicted or volatile signals reduce it. The output is kept in a realistic 60-90% range.
 
-### 4. Recommendation Generator
+### 4. AI Evaluation Metrics
+
+The recommendation card includes a premium evaluation layer for quick model-readout scanning:
+
+- **AI Confidence Score:** the primary confidence value shown out of 100.
+- **Signal Agreement:** a high, medium, or low agreement state derived from agent signal alignment.
+- **Consistency Score:** a simulated reliability score based on volatility and agreement stability.
+- **F1 Signal Score:** an F1-style score out of 100 that summarizes simulated signal precision/recall quality.
+
+These metrics are visualized with responsive glassmorphism cards and glowing gradient bars so the dashboard stays readable on desktop, tablet, and mobile widths.
+
+### 5. Recommendation Generator
 
 The recommendation changes based on both market signals and user intent:
 
@@ -111,7 +125,7 @@ The recommendation changes based on both market signals and user intent:
 - A comparison query can frame relative strength and rotation risk.
 - Mixed signals lead to more cautious wording.
 
-### 5. Market Trend Chart
+### 6. Market Trend Chart
 
 The chart is generated from the same agent output:
 
@@ -123,7 +137,7 @@ The chart is generated from the same agent output:
 
 The chart includes a gradient area, glow effect, moving average line, tooltip, and last-price marker.
 
-### 6. Technical Output
+### 7. Technical Output
 
 The raw JSON output is hidden by default to keep the interface clean. Users can open it with the **Show Technical Output** toggle.
 
@@ -200,4 +214,4 @@ Most AI demos return a polished answer without showing how that answer was forme
 
 ## Contributor
 
-Built and maintained by **prerakarya**.
+- **prerakarya** - Creator and maintainer

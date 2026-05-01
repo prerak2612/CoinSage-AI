@@ -12,7 +12,12 @@ import {
   YAxis,
 } from "recharts";
 
-const navLinks = ["Home", "Agents", "Dashboard", "Demo"];
+const navLinks = [
+  { label: "Home", href: "#home" },
+  { label: "Agents", href: "#agents" },
+  { label: "Dashboard", href: "#dashboard" },
+  { label: "Demo", href: "#analysis" },
+];
 
 const workflowSteps = [
   {
@@ -473,9 +478,10 @@ const features = [
 
 const footerLinks = ["Privacy", "Terms", "Contact"];
 
-function GlassCard({ className = "", children }) {
+function GlassCard({ className = "", children, ...props }) {
   return (
     <div
+      {...props}
       className={`rounded-[20px] border border-white/8 bg-white/[0.045] shadow-[0_18px_60px_rgba(4,8,20,0.42)] backdrop-blur-2xl ${className}`}
     >
       {children}
@@ -495,8 +501,11 @@ export default function App() {
   const [animatedConfidence, setAnimatedConfidence] = useState(0);
   const [queryHistory, setQueryHistory] = useState([]);
   const [showTechnicalOutput, setShowTechnicalOutput] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
   const timerRef = useRef([]);
   const typeTimerRef = useRef(null);
+  const toastTimerRef = useRef(null);
+  const inputRef = useRef(null);
 
   const recommendationText = useMemo(() => {
     if (workflowFinished) {
@@ -529,6 +538,9 @@ export default function App() {
       timerRef.current.forEach((timer) => window.clearTimeout(timer));
       if (typeTimerRef.current) {
         window.clearTimeout(typeTimerRef.current);
+      }
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
       }
     };
   }, []);
@@ -580,6 +592,20 @@ export default function App() {
   const clearWorkflowTimers = () => {
     timerRef.current.forEach((timer) => window.clearTimeout(timer));
     timerRef.current = [];
+  };
+
+  const showStartAnalysisToast = () => {
+    setToastVisible(true);
+    inputRef.current?.focus();
+    inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastVisible(false);
+    }, 3200);
   };
 
   const runQuery = (nextQuery) => {
@@ -644,6 +670,16 @@ export default function App() {
       <div className="absolute inset-0 opacity-[0.14] [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:72px_72px]" />
       <div className="absolute inset-0 backdrop-blur-[110px]" />
 
+      <div className={`analysis-toast ${toastVisible ? "analysis-toast-visible" : ""}`} role="status" aria-live="polite">
+        <div className="analysis-toast-icon">
+          <Sparkles size={17} strokeWidth={2.2} />
+        </div>
+        <div>
+          <div className="analysis-toast-title">Ready for analysis</div>
+          <div className="analysis-toast-copy">Enter a question, then run the query.</div>
+        </div>
+      </div>
+
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 pb-10 pt-6 sm:px-10 lg:px-12">
         <header className="animate-[fadeUp_800ms_ease-out_both]">
           <GlassCard className="px-5 py-4 sm:px-6">
@@ -660,22 +696,25 @@ export default function App() {
 
               <nav className="flex flex-wrap items-center gap-5 text-sm text-white/62">
                 {navLinks.map((link) => (
-                  <a key={link} href="#" className="transition hover:text-white">
-                    {link}
+                  <a key={link.label} href={link.href} className="transition hover:text-white">
+                    {link.label}
                   </a>
                 ))}
               </nav>
 
-              <button className="inline-flex h-11 items-center justify-center rounded-[16px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-5 text-sm font-medium text-white shadow-[0_0_28px_rgba(99,102,241,0.42)] transition duration-300 hover:scale-[1.02] hover:shadow-[0_0_38px_rgba(236,72,153,0.28)]">
+              <a
+                href="#analysis"
+                className="inline-flex h-11 items-center justify-center rounded-[16px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-5 text-sm font-medium text-white shadow-[0_0_28px_rgba(99,102,241,0.42)] transition duration-300 hover:scale-[1.02] hover:shadow-[0_0_38px_rgba(236,72,153,0.28)]"
+              >
                 Launch App
-              </button>
+              </a>
             </div>
           </GlassCard>
         </header>
 
-        <section className="relative flex flex-1 items-center py-18 lg:py-24">
-          <div className="grid w-full gap-14 lg:grid-cols-[1.04fr_0.96fr] lg:items-center">
-            <div className="max-w-2xl">
+        <section id="home" className="relative flex flex-1 scroll-mt-8 items-center py-18 lg:py-24">
+          <div className={`grid w-full gap-14 lg:items-center ${workflowVisible ? "lg:grid-cols-1" : "lg:grid-cols-[1.04fr_0.96fr]"}`}>
+            <div className={`${workflowVisible ? "max-w-none" : "max-w-2xl"}`}>
               <div className="inline-flex animate-[fadeScale_900ms_ease-out_120ms_both] items-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 py-2 text-sm text-white/70">
                 <span className="h-2 w-2 rounded-full bg-[linear-gradient(90deg,#8B5CF6,#3B82F6,#EC4899)] shadow-[0_0_20px_rgba(139,92,246,0.85)]" />
                 Real-time reasoning for digital asset research
@@ -694,21 +733,23 @@ export default function App() {
               </p>
 
               <div className="mt-10 flex flex-col gap-4 sm:flex-row animate-[fadeUp_1000ms_ease-out_460ms_both]">
-                <button className="inline-flex h-14 items-center justify-center rounded-[18px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-7 text-base font-medium text-white shadow-[0_0_34px_rgba(99,102,241,0.4)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_46px_rgba(236,72,153,0.24)]">
+                <button
+                  type="button"
+                  onClick={showStartAnalysisToast}
+                  className="inline-flex h-14 items-center justify-center rounded-[18px] bg-[linear-gradient(90deg,#8B5CF6_0%,#3B82F6_52%,#EC4899_100%)] px-7 text-base font-medium text-white shadow-[0_0_34px_rgba(99,102,241,0.4)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_46px_rgba(236,72,153,0.24)]"
+                >
                   Start Analysis
-                </button>
-                <button className="inline-flex h-14 items-center justify-center rounded-[18px] border border-white/10 bg-white/[0.025] px-7 text-base font-medium text-white/82 backdrop-blur-xl transition duration-300 hover:border-white/18 hover:bg-white/[0.045]">
-                  View Demo
                 </button>
               </div>
 
-              <GlassCard className="mt-8 animate-[fadeUp_1050ms_ease-out_540ms_both] p-4 sm:p-5">
+              <GlassCard id="analysis" className="relative z-10 mt-8 scroll-mt-24 animate-[fadeUp_1050ms_ease-out_540ms_both] p-4 sm:p-5">
                 <form
                   onSubmit={handleSubmit}
                   className="rounded-[18px] border border-white/6 bg-[#0E1424]/84 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <input
+                      ref={inputRef}
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Ask CoinSage AI about Bitcoin momentum, ETH rotation, or market risk..."
@@ -939,7 +980,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="animate-[fadeScale_1100ms_ease-out_240ms_both]">
+            <div className={`animate-[fadeScale_1100ms_ease-out_240ms_both] ${workflowVisible ? "hidden" : ""}`}>
               <div className="relative mx-auto flex aspect-[1.02] w-full max-w-[580px] items-center justify-center">
                 <div className="absolute inset-[10%] rounded-full border border-white/8 bg-[radial-gradient(circle,rgba(99,102,241,0.22),transparent_58%)] blur-3xl" />
                 <div className="absolute inset-[18%] rounded-full border border-white/8 bg-[radial-gradient(circle,rgba(236,72,153,0.14),transparent_64%)] blur-3xl" />
@@ -1009,7 +1050,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="py-8">
+        <section id="agents" className="scroll-mt-24 py-8">
           <div className="animate-[fadeUp_1000ms_ease-out_180ms_both]">
             <div className="max-w-2xl">
               <div className="text-sm uppercase tracking-[0.24em] text-white/38">Workflow</div>
@@ -1039,7 +1080,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="py-18">
+        <section id="features" className="scroll-mt-24 py-18">
           <div className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr]">
             <div className="animate-[fadeUp_1000ms_ease-out_240ms_both]">
               <div className="text-sm uppercase tracking-[0.24em] text-white/38">Features</div>
@@ -1068,7 +1109,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="py-8">
+        <section id="dashboard" className="scroll-mt-24 py-8">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
             <div className="animate-[fadeUp_1000ms_ease-out_260ms_both]">
               <div className="text-sm uppercase tracking-[0.24em] text-white/38">Preview</div>
